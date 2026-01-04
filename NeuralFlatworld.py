@@ -21,6 +21,7 @@ CARNIVORE_FRACTION = 0.5
 
 GENERATIONS = 10000
 
+#Account for warp-around world
 class Spot:
     def __init__(self, creature, thing):
         h = getHeight( )
@@ -50,7 +51,7 @@ class Spot:
         elif bearing < 45 and bearing > -10:
             self.zones[1] = 10.0 / self.distance \
                                       if self.distance > 10 else 1.0
-
+#Separate all organisms into carivores, herbivores, and grass and create list of spot instances
 def getSpots(me):
     organisms = getOrganisms()
     redList = filter(lambda x: type(x) == Carnivore and \
@@ -85,6 +86,8 @@ def getZones(spots):
                                   zonesList)
     return zonesTotals
 
+#Direction output and sex extra perceptrons
+#D, E0, E1, E2, E3, E4, E5, RC, LC, RH, LH, RG, LG
 def caption(x):
     if x < NUM_OUTPUTS:
         s = ['D'][x]
@@ -98,6 +101,10 @@ def caption(x):
 
     return s
 
+#Container for the weight matrix that will be used for the neural network
+#Provides methods for mate, mutate, print
+#Create a random chromosome or copy one that already exists
+#Genes stored as a tensor
 class Chromosome:
     def __init__(self, chromosome=None):
         if chromosome == None:
@@ -109,6 +116,7 @@ class Chromosome:
         else:
             self.gene = tf.constant(chromosome.gene)
 
+    #Pick 3 random genes and change them
     def mutate(self):
         mine = np.array(self.gene)
         for i in range(NUM_MUTATIONS):
@@ -128,6 +136,7 @@ class Chromosome:
         child.gene = tf.where(mask, self.gene, other.gene)
         return child
 
+    #Convert chromosome to a string for printing
     def __str__(self):
         s = '<'
         for op in range(NUM_PERCEPTRONS):

@@ -10,6 +10,7 @@ sequenceLength = 25
 batchSize = 96
 epochs=50
 
+#Create list of names from csv file based on specs and order randomly
 def readNames(firstYear, lastYear,
                      genders='GB', nameSize=99):
     names = set( )
@@ -29,32 +30,39 @@ def readNames(firstYear, lastYear,
                 names.add(row[2].lower( ))
 
     names = list(names)
-    random.shuffle(names)
+    random.shuffle(names) #put in random order
     return names
 
+#Create encoding between character and numerical indices (n=30 with apostrophes, hyphens, periods, and spaces)
 class Vocab:
     def __init__(self, names):
-
+        #Get a list of all unique characters in names
         allNamesStr = ' '.join(names)
+        #Convert to set, convert to sorted list
         self.vocab = sorted(set(allNamesStr))
         print ('vocab:', self.vocab)
 
+        #Use internal attributes to convert to and from numerical indices
         self._char2idx = {c:i for i, c in enumerate(self.vocab)}
         self._idx2char = np.array(self.vocab)
         self.size = len(self.vocab)
 
+    #Converts a character to an index
     def char2idx(self, c):
         return self._char2idx[c]
 
+    #Converts an index to a character
     def idx2char(self, i):
         return self._idx2char[i]
 
+#Convert string to a numpy array
 def string2array(string, vocab, pad=None):
     if pad != None:
         string = string + ' ' * (pad - len(string))
 
     return np.array([vocab.char2idx(char) for char in string])
 
+#Split names into training and testing sets - each batch must contain same number of sequences
 def splitNames(names, mult, div):
     totalNames = len(names)
     testSplit = totalNames * mult // div
@@ -64,6 +72,7 @@ def splitNames(names, mult, div):
     
     return trainingNames, testingNames
 
+#Create batches of sequences from array - every batch must be same size
 def batchUpSeq(array, seqLength, batchSize):
     batch=( [array[i:i+seqLength] \
                       for i in range(len(array)-seqLength) ] )
@@ -74,6 +83,7 @@ def batchUpSeq(array, seqLength, batchSize):
     
     return np.array(batch)
 
+#Split names into training and testing sets, prepare batches
 class Names:
     def __init__(self, names):
         self.vocab = Vocab(names)
@@ -88,6 +98,7 @@ class Names:
         self.trainingNamesStr = ' '.join(self.trainingNames)
         self.testingNamesStr = ' '.join(self.testingNames)
 
+    #Expected output is the input sequence shifted by one character
     def prepareBatches(self):
         trainingNamesXArray = string2array( \
                              self.trainingNamesStr[:-1], self.vocab)
@@ -113,12 +124,13 @@ class Names:
         self.testingY = batchUpSeq(testingNamesYArray,
                                            sequenceLength, batchSize)
 
+#Define LSTM (long short term memory) model
 def lstmModel(embeddingDimension, lstmUnits,
                         loss_fn, vocabSize, batchSize,
                         sequenceLength):
 
     model = tf.keras.Sequential( [
-
+        #Encode each number as a vector of numbers
         tf.keras.layers.Embedding(vocabSize,
                              embeddingDimension),
 
@@ -128,19 +140,21 @@ def lstmModel(embeddingDimension, lstmUnits,
                         recurrent_initializer='glorot_uniform',
                         recurrent_activation='sigmoid'),
 
+        #Output will be one-hot encoding - one ouput for each character in vocab
         tf.keras.layers.Dense(vocabSize, activation='relu') ] )
 
+    #Compile the model with Adam optimizer and loss function
     opt = tf.keras.optimizers.Adam(learning_rate=0.0001)
     model.compile(optimizer=opt,
                   loss=loss_fn,
                   metrics=['accuracy'])
     return model
 
+#Train model as series of epochs
 def trainModel(model, data, loss_fn):
     steps = len(data.trainingX) // batchSize
-
-    previousLoss = 9999
-
+    #Initiate previousLoss
+    previousLoss = float('inf')
     for epoch in range(epochs):
         print ('Epoch', epoch)
 
@@ -155,36 +169,44 @@ def trainModel(model, data, loss_fn):
         losses = loss_fn(data.testingY, predictedY)
         avgLoss = losses.numpy().mean()
 
+        #Monitor how training is progressing
         print('Average test loss:', avgLoss, 'Improvement:',
                previousLoss - avgLoss)
 
         print(generateNames(model, data.vocab,
                 batchSize, 300))
 
+        #Halt if getting worse
         if avgLoss > previousLoss:
             print('Finished early to avoid over fitting')
             break
         previousLoss = avgLoss
 
 def lstmProject():
-    names = readNames(firstYear = 1974, lastYear = 2000,
+    #Read names and convert to batched data
+    names = readNames(firstYear = 2022, lastYear = 2023,
                                  genders='B')
     dataset = Names(names)
 
     loss_fn = tf.keras.losses.SparseCategoricalCrossentropy( \
                                                           from_logits=True)
 
+    #Create neural network 
     model = lstmModel(embeddingDimension = 100,
                         lstmUnits = 1000, loss_fn=loss_fn,
                         vocabSize = dataset.vocab.size,
                         batchSize = batchSize,
                         sequenceLength = sequenceLength)
+    #Train neural network
     trainModel(model, dataset, loss_fn)
 
+    #Generate new names
     genNames = generateNames(model, dataset.vocab,
                                              batchSize, 1000)
+    #Last name will be truncated - just remove it
     genNames = genNames.split(' ')[:-1]
 
+    #Report new names and accidental copies of old ones separately
     newNames = filter(lambda x: not x in names, genNames)
     oldNames = filter(lambda x: x in names, genNames)
 
@@ -193,6 +215,7 @@ def lstmProject():
     print('\nNew names generated:\n', newNamesStr)
     print('\nOld names generated:\n', oldNamesStr)
 
+#Convert vectors back to characters to form names
 def generateNames(model, vocab, batchSize, length=1000):
     input_eval = [vocab.char2idx(' ')]
     input_eval = tf.expand_dims(input_eval, 0)
